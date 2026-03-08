@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Space Bar Tycoon</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+:root{
+  --bg:#0b0b1a;--card:#111128;--panel:#0d0d22;
+  --neon:#00ffe5;--pink:#ff2d7b;--gold:#ffc942;--blue:#4d7cff;
+  --green:#39ff6e;--red:#ff3d3d;--txt:#d8d8f0;--mut:#5a5a7f;
+  --bdr:rgba(255,255,255,.07);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:'Rajdhani',sans-serif;overflow:hidden;height:100vh;width:100vw;user-select:none}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges}
+
+/* ===== UI OVERLAY SYSTEM ===== */
+.ui-layer{position:fixed;inset:0;pointer-events:none;z-index:100}
+.ui-layer>*{pointer-events:auto}
+
+/* HUD */
+.hud{position:fixed;top:0;left:0;right:0;padding:10px 16px;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(180deg,rgba(11,11,26,.95) 0%,transparent 100%);z-index:50}
+.hud-left,.hud-right{display:flex;align-items:center;gap:14px}
+.hud-stat{display:flex;align-items:center;gap:6px;font-family:'Press Start 2P',monospace;font-size:.55rem;letter-spacing:1px}
+.hud-stat .icon{width:18px;height:18px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:.7rem}
+.hud-stat .val{color:var(--gold)}
+.hud-money .icon{background:var(--gold);color:#000}
+.hud-rep .icon{background:var(--pink);color:#fff}
+.hud-day .icon{background:var(--blue);color:#fff}
+.hud-btn{padding:6px 12px;border:1px solid var(--bdr);border-radius:6px;background:var(--card);color:var(--txt);font-family:'Rajdhani',sans-serif;font-size:.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:.2s}
+.hud-btn:hover{border-color:var(--neon);color:var(--neon);box-shadow:0 0 12px rgba(0,255,229,.15)}
+
+/* COOK BAR */
+.cook-bar-wrap{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:60;display:none;text-align:center}
+.cook-bar-label{font-family:'Press Start 2P',monospace;font-size:.5rem;color:var(--gold);margin-bottom:6px;letter-spacing:2px}
+.cook-bar-outer{width:240px;height:20px;background:rgba(0,0,0,.6);border:2px solid var(--gold);border-radius:10px;overflow:hidden;position:relative}
+.cook-bar-fill{height:100%;background:linear-gradient(90deg,var(--pink),var(--gold));border-radius:8px;transition:width .08s;width:0%}
+.cook-bar-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Press Start 2P',monospace;font-size:.4rem;color:#fff;text-shadow:0 0 4px #000}
+.cook-item-name{font-family:'Press Start 2P',monospace;font-size:.45rem;color:var(--neon);margin-bottom:4px;letter-spacing:1px}
+
+/* BOTTOM BAR */
+.bottom-bar{position:fixed;bottom:0;left:0;right:0;padding:8px 12px;background:linear-gradient(0deg,rgba(11,11,26,.97) 0%,transparent 100%);z-index:50;display:flex;justify-content:center;gap:6px}
+.bb-btn{padding:8px 16px;border:1px solid var(--bdr);border-radius:8px;background:var(--card);color:var(--txt);font-family:'Press Start 2P',monospace;font-size:.4rem;letter-spacing:1px;cursor:pointer;transition:.2s;text-transform:uppercase}
+.bb-btn:hover{border-color:var(--neon);color:var(--neon)}
+.bb-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(255,201,66,.08)}
+
+/* MODAL SYSTEM */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--bdr);border-radius:16px;padding:24px;max-width:420px;width:90%;max-height:80vh;overflow-y:auto;animation:popIn .3s cubic-bezier(.17,.67,.35,1.2)}
+@keyframes popIn{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+.modal h2{font-family:'Press Start 2P',monospace;font-size:.65rem;color:var(--neon);letter-spacing:2px;margin-bottom:16px;text-transform:uppercase}
+.modal-close{position:absolute;top:12px;right:16px;background:none;border:none;color:var(--mut);font-size:1.4rem;cursor:pointer}
+.modal-close:hover{color:var(--red)}
+
+/* SHOP */
+.shop-item{display:flex;align-items:center;gap:12px;padding:12px;background:rgba(0,0,0,.2);border:1px solid var(--bdr);border-radius:10px;margin-bottom:8px;cursor:pointer;transition:.2s}
+.shop-item:hover{border-color:var(--gold)}
+.shop-item.owned{border-color:var(--green);opacity:.7}
+.shop-item .si-icon{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.4rem;background:rgba(255,255,255,.05)}
+.shop-item .si-info{flex:1}
+.shop-item .si-name{font-weight:700;font-size:.85rem}
+.shop-item .si-desc{font-size:.72rem;color:var(--mut)}
+.shop-item .si-cost{font-family:'Press Start 2P',monospace;font-size:.45rem;color:var(--gold)}
+
+/* TABS */
+.tab-row{display:flex;gap:4px;margin-bottom:14px}
+.tab-btn{flex:1;padding:8px;border:1px solid var(--bdr);border-radius:8px;background:transparent;color:var(--mut);font-family:'Rajdhani',sans-serif;font-size:.75rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;cursor:pointer;transition:.2s;text-align:center}
+.tab-btn.active{border-color:var(--neon);color:var(--neon);background:rgba(0,255,229,.05)}
+
+/* SERVER BROWSER */
+.server-row{display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(0,0,0,.2);border:1px solid var(--bdr);border-radius:8px;margin-bottom:6px;cursor:pointer;transition:.2s}
+.server-row:hover{border-color:var(--blue)}
+.server-name{flex:1;font-weight:700;font-size:.85rem}
+.server-players{font-size:.7rem;color:var(--mut)}
+.server-join{padding:4px 12px;border-radius:6px;border:none;background:var(--blue);color:#fff;font-family:'Rajdhani',sans-serif;font-size:.72rem;font-weight:700;cursor:pointer}
+.server-tag{font-size:.55rem;padding:2px 6px;border-radius:4px;background:rgba(0,255,229,.1);color:var(--neon);margin-left:6px}
+
+/* FRIENDS */
+.fr-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bdr)}
+.fr-row:last-child{border:none}
+.fr-btns{display:flex;gap:4px}
+.fr-btn{padding:4px 10px;border-radius:5px;border:none;font-size:.7rem;font-weight:700;cursor:pointer}
+.fr-accept{background:var(--green);color:#000}
+.fr-decline{background:var(--red);color:#fff}
+.fr-remove{background:var(--card);color:var(--red);border:1px solid var(--red)}
+
+/* INPUT */
+.inp{width:100%;padding:10px 14px;background:rgba(0,0,0,.3);border:1px solid var(--bdr);border-radius:8px;color:var(--txt);font-family:'Rajdhani',sans-serif;font-size:.9rem;outline:none}
+.inp:focus{border-color:var(--neon)}
+.inp::placeholder{color:var(--mut)}
+.lbl{font-size:.72rem;color:var(--mut);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:block}
+.mbtn{display:block;width:100%;padding:12px;border:none;border-radius:8px;font-family:'Press Start 2P',monospace;font-size:.45rem;letter-spacing:1px;cursor:pointer;transition:.2s;text-transform:uppercase;margin-top:8px}
+.mbtn:disabled{opacity:.4;cursor:not-allowed}
+.mbtn-neon{background:var(--neon);color:#000}
+.mbtn-pink{background:var(--pink);color:#fff}
+.mbtn-gold{background:var(--gold);color:#000}
+.mbtn-ghost{background:transparent;border:1px solid var(--bdr);color:var(--txt)}
+.mbtn-ghost:hover{border-color:var(--neon)}
+.err{color:var(--red);font-size:.75rem;margin-top:6px}
+.ok{color:var(--green);font-size:.75rem;margin-top:6px}
+
+/* CONTROL HINT */
+.ctrl-hint{position:fixed;bottom:50px;left:50%;transform:translateX(-50%);font-family:'Press Start 2P',monospace;font-size:.35rem;color:var(--mut);letter-spacing:2px;z-index:40;text-align:center;pointer-events:none}
+
+/* TOAST */
+.toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);padding:8px 20px;border-radius:8px;font-family:'Press Start 2P',monospace;font-size:.4rem;z-index:300;animation:toastIn .3s,toastOut .3s 2s forwards;pointer-events:none;letter-spacing:1px}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(-10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes toastOut{to{opacity:0;transform:translateX(-50%) translateY(-10px)}}
+.toast-money{background:var(--gold);color:#000}
+.toast-rep{background:var(--pink);color:#fff}
+.toast-info{background:var(--blue);color:#fff}
+.toast-bad{background:var(--red);color:#fff}
+
+/* TITLE SCREEN */
+#title-screen{position:fixed;inset:0;z-index:500;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+#title-screen .title{font-family:'Press Start 2P',monospace;font-size:1.6rem;letter-spacing:4px;margin-bottom:6px}
+#title-screen .title span:nth-child(1){color:var(--neon)}
+#title-screen .title span:nth-child(2){color:var(--pink)}
+#title-screen .title span:nth-child(3){color:var(--gold)}
+#title-screen .sub{font-size:.85rem;color:var(--mut);letter-spacing:4px;text-transform:uppercase;margin-bottom:40px}
+#title-screen .menu-btn{display:block;width:260px;padding:16px;border:2px solid var(--bdr);border-radius:12px;background:var(--card);color:var(--txt);font-family:'Press Start 2P',monospace;font-size:.5rem;letter-spacing:2px;cursor:pointer;margin-bottom:10px;transition:.3s;text-transform:uppercase}
+#title-screen .menu-btn:hover{border-color:var(--neon);color:var(--neon);box-shadow:0 0 20px rgba(0,255,229,.15);transform:translateY(-2px)}
+#title-screen .menu-btn.mp{border-color:var(--pink)}
+#title-screen .menu-btn.mp:hover{border-color:var(--pink);color:var(--pink);box-shadow:0 0 20px rgba(255,45,123,.15)}
+#title-screen .ver{position:fixed;bottom:16px;font-size:.6rem;color:var(--mut)}
+
+/* SETTINGS OVERLAY */
+#settings-screen{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.9);display:none;align-items:center;justify-content:center}
+#settings-screen.show{display:flex}
+.settings-card{background:var(--card);border-radius:16px;padding:28px;max-width:360px;width:90%}
+.ctrl-opt{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bdr)}
+.ctrl-opt:last-child{border:none}
+.ctrl-label{font-weight:600}
+.ctrl-toggle{display:flex;gap:4px}
+.ctrl-choice{padding:6px 14px;border:1px solid var(--bdr);border-radius:6px;background:transparent;color:var(--mut);font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.8rem;cursor:pointer;transition:.2s}
+.ctrl-choice.active{border-color:var(--neon);color:var(--neon);background:rgba(0,255,229,.08)}
+
+/* Star particles */
+.stars{position:fixed;inset:0;z-index:-1;overflow:hidden}
+.star{position:absolute;background:#fff;border-radius:50%;animation:twinkle linear infinite}
+@keyframes twinkle{0%,100%{opacity:.2}50%{opacity:.8}}
+</style>
+</head>
+<body>
+
+<!-- STARS BG -->
+<div class="stars" id="stars"></div>
+
+<!-- GAME CANVAS -->
+<canvas id="game"></canvas>
+
+<!-- TITLE SCREEN -->
+<div id="title-screen">
+  <div class="title"><span>SPACE </span><span>BAR </span><span>TYCOON</span></div>
+  <div class="sub">Galactic Restaurant Simulator</div>
+  <button class="menu-btn" onclick="startSinglePlayer()">&#9654; Single Player</button>
+  <button class="menu-btn mp" onclick="openMultiplayer()">&#9670; Multiplayer</button>
+  <button class="menu-btn" onclick="openSettings()">&#9881; Settings</button>
+  <div class="ver">v1.0 &mdash; Firebase + GitHub Pages</div>
+</div>
+
+<!-- SETTINGS -->
+<div id="settings-screen">
+  <div class="settings-card">
+    <h2 style="font-family:'Press Start 2P',monospace;font-size:.6rem;color:var(--neon);letter-spacing:2px;margin-bottom:16px">SETTINGS</h2>
+    <div class="ctrl-opt">
+      <span class="ctrl-label">Movement</span>
+      <div class="ctrl-toggle">
+        <button class="ctrl-choice active" onclick="setCtrl('wasd',this)" data-ctrl="wasd">WASD</button>
+        <button class="ctrl-choice" onclick="setCtrl('arrows',this)" data-ctrl="arrows">Arrows</button>
+      </div>
+    </div>
+    <div class="ctrl-opt">
+      <span class="ctrl-label">Music</span>
+      <div class="ctrl-toggle">
+        <button class="ctrl-choice active" onclick="toggleMusic(true,this)" data-snd="on">On</button>
+        <button class="ctrl-choice" onclick="toggleMusic(false,this)" data-snd="off">Off</button>
+      </div>
+    </div>
+    <div class="ctrl-opt">
+      <span class="ctrl-label">SFX</span>
+      <div class="ctrl-toggle">
+        <button class="ctrl-choice active" onclick="toggleSFX(true,this)" data-sfx="on">On</button>
+        <button class="ctrl-choice" onclick="toggleSFX(false,this)" data-sfx="off">Off</button>
+      </div>
+    </div>
+    <button class="mbtn mbtn-ghost" onclick="closeSettings()" style="margin-top:16px">Back</button>
+  </div>
+</div>
+
+<!-- HUD (hidden until game starts) -->
+<div class="hud" id="hud" style="display:none">
+  <div class="hud-left">
+    <div class="hud-stat hud-money"><div class="icon">$</div><div class="val" id="hud-money">0</div></div>
+    <div class="hud-stat hud-rep"><div class="icon">★</div><div class="val" id="hud-rep">0</div></div>
+    <div class="hud-stat hud-day"><div class="icon">D</div><div class="val" id="hud-day">1</div></div>
+  </div>
+  <div class="hud-right">
+    <button class="hud-btn" onclick="openShopModal()">Shop</button>
+    <button class="hud-btn" onclick="openMenuModal()">Menu</button>
+  </div>
+</div>
+
+<!-- COOK BAR -->
+<div class="cook-bar-wrap" id="cook-bar">
+  <div class="cook-item-name" id="cook-name">Burger</div>
+  <div class="cook-bar-label">PRESS SPACE / TAP!</div>
+  <div class="cook-bar-outer">
+    <div class="cook-bar-fill" id="cook-fill"></div>
+    <div class="cook-bar-text" id="cook-text">0 / 10</div>
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div class="bottom-bar" id="bottom-bar" style="display:none">
+  <button class="bb-btn" onclick="openShopModal()">Shop</button>
+  <button class="bb-btn" onclick="openUpgradeModal()">Upgrade</button>
+  <button class="bb-btn" onclick="openSkinsModal()">Skins</button>
+</div>
+
+<!-- CONTROL HINT -->
+<div class="ctrl-hint" id="ctrl-hint" style="display:none">
+  <span id="ctrl-hint-text">WASD to move &bull; SPACE to interact</span>
+</div>
+
+<!-- SHOP MODAL -->
+<div class="modal-overlay" id="modal-shop">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-shop')">&times;</button>
+    <h2>Shop</h2>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="shopTab('powerups',this)">Power-Ups</button>
+      <button class="tab-btn" onclick="shopTab('decor',this)">Decor</button>
+    </div>
+    <div id="shop-content"></div>
+  </div>
+</div>
+
+<!-- SKINS MODAL -->
+<div class="modal-overlay" id="modal-skins">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-skins')">&times;</button>
+    <h2>Skins</h2>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="skinTab('player',this)">Character</button>
+      <button class="tab-btn" onclick="skinTab('spacebar',this)">Space Bar</button>
+    </div>
+    <div id="skins-content"></div>
+  </div>
+</div>
+
+<!-- UPGRADE MODAL -->
+<div class="modal-overlay" id="modal-upgrade">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-upgrade')">&times;</button>
+    <h2>Upgrades</h2>
+    <div id="upgrade-content"></div>
+  </div>
+</div>
+
+<!-- MENU / PAUSE MODAL -->
+<div class="modal-overlay" id="modal-menu">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-menu')">&times;</button>
+    <h2>Menu</h2>
+    <button class="mbtn mbtn-ghost" onclick="closeModal('modal-menu')">Resume</button>
+    <button class="mbtn mbtn-ghost" onclick="openSettings();closeModal('modal-menu')">Settings</button>
+    <button class="mbtn mbtn-ghost" onclick="quitToTitle()">Quit to Title</button>
+  </div>
+</div>
+
+<!-- MULTIPLAYER MODAL -->
+<div class="modal-overlay" id="modal-mp">
+  <div class="modal" style="position:relative">
+    <button class="modal-close" onclick="closeModal('modal-mp')">&times;</button>
+    <h2>Multiplayer</h2>
+    <div id="mp-auth" style="margin-bottom:14px">
+      <div id="mp-loggedout">
+        <label class="lbl">Username</label>
+        <input class="inp" id="mp-user" placeholder="Username" maxlength="16" style="margin-bottom:8px">
+        <label class="lbl">Password</label>
+        <input class="inp" id="mp-pass" type="password" placeholder="Password" style="margin-bottom:8px">
+        <div id="mp-err"></div>
+        <button class="mbtn mbtn-neon" onclick="mpLogin()">Login</button>
+        <button class="mbtn mbtn-ghost" onclick="mpRegister()">Create Account</button>
+      </div>
+      <div id="mp-loggedin" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-weight:700;color:var(--neon)" id="mp-name"></span>
+          <button class="fr-btn fr-remove" onclick="mpLogout()" style="font-size:.65rem">Logout</button>
+        </div>
+      </div>
+    </div>
+    <div class="tab-row">
+      <button class="tab-btn active" onclick="mpTab('servers',this)">Servers</button>
+      <button class="tab-btn" onclick="mpTab('host',this)">Host</button>
+      <button class="tab-btn" onclick="mpTab('friends',this)">Friends</button>
+    </div>
+    <div id="mp-content"></div>
+  </div>
+</div>
+
+<!-- FIREBASE CONFIG MODAL (first time) -->
+<div class="modal-overlay" id="modal-firebase">
+  <div class="modal" style="position:relative">
+    <h2>Firebase Setup</h2>
+    <p style="font-size:.8rem;color:var(--mut);margin-bottom:12px;line-height:1.5">Paste your Firebase config to enable multiplayer. See the README for setup instructions.</p>
+    <label class="lbl">API Key</label>
+    <input class="inp" id="fb-apiKey" placeholder="AIza..." style="margin-bottom:6px">
+    <label class="lbl">Auth Domain</label>
+    <input class="inp" id="fb-authDomain" placeholder="yourapp.firebaseapp.com" style="margin-bottom:6px">
+    <label class="lbl">Database URL</label>
+    <input class="inp" id="fb-databaseURL" placeholder="https://yourapp-default-rtdb..." style="margin-bottom:6px">
+    <label class="lbl">Project ID</label>
+    <input class="inp" id="fb-projectId" placeholder="yourapp" style="margin-bottom:6px">
+    <div id="fb-err"></div>
+    <button class="mbtn mbtn-neon" onclick="saveFirebaseConfig()">Save & Connect</button>
+    <button class="mbtn mbtn-ghost" onclick="closeModal('modal-firebase')">Skip (Single Player Only)</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// AUDIO ENGINE (Web Audio API - procedural SFX + music)
+// ============================================================
+var audioCtx=null;
+var MUSIC_ON=true, SFX_ON=true;
+function initAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)()}
+function playTone(freq,dur,type,vol){
+  if(!SFX_ON||!audioCtx)return;
+  var o=audioCtx.createOscillator(),g=audioCtx.createGain();
+  o.type=type||'square';o.frequency.value=freq;
+  g.gain.value=vol||.08;g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+dur);
+  o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+dur);
+}
+function sfxCook(){playTone(600,.06,'square',.1);setTimeout(function(){playTone(800,.06,'square',.1)},60)}
+function sfxDone(){playTone(523,.1,'sine',.12);setTimeout(function(){playTone(659,.1,'sine',.12)},100);setTimeout(function(){playTone(784,.15,'sine',.12)},200)}
+function sfxMoney(){playTone(880,.08,'sine',.1);setTimeout(function(){playTone(1100,.12,'sine',.1)},80)}
+function sfxBad(){playTone(200,.2,'sawtooth',.08)}
+function sfxClick(){playTone(1000,.03,'square',.06)}
+function sfxStep(){playTone(150+Math.random()*50,.04,'square',.03)}
+
+// Simple music loop
+var musicInterval=null;
+function startMusic(){
+  if(!MUSIC_ON||!audioCtx)return;stopMusic();
+  var notes=[262,294,330,349,392,440,392,349];var i=0;
+  musicInterval=setInterval(function(){
+    if(!MUSIC_ON){stopMusic();return;}
+    var o=audioCtx.createOscillator(),g=audioCtx.createGain();
+    o.type='sine';o.frequency.value=notes[i%notes.length];
+    g.gain.value=.02;g.gain.exponentialRampToValueAtTime(.001,audioCtx.currentTime+.4);
+    o.connect(g);g.connect(audioCtx.destination);o.start();o.stop(audioCtx.currentTime+.4);
+    i++;
+  },500);
+}
+function stopMusic(){if(musicInterval){clearInterval(musicInterval);musicInterval=null;}}
+function toggleMusic(on,el){MUSIC_ON=on;el.parentElement.querySelectorAll('.ctrl-choice').forEach(function(b){b.classList.remove('active')});el.classList.add('active');if(on)startMusic();else stopMusic();}
+function toggleSFX(on,el){SFX_ON=on;el.parentElement.querySelectorAll('.ctrl-choice').forEach(function(b){b.classList.remove('active')});el.classList.add('active');}
+
+// ============================================================
+// SETTINGS
+// ============================================================
+var CTRL='wasd'; // 'wasd' or 'arrows'
+function setCtrl(mode,el){CTRL=mode;el.parentElement.querySelectorAll('.ctrl-choice').forEach(function(b){b.classList.remove('active')});el.classList.add('active');updateCtrlHint();}
+function updateCtrlHint(){document.getElementById('ctrl-hint-text').textContent=(CTRL==='wasd'?'WASD':'Arrow Keys')+' to move \u2022 SPACE to interact';}
+function openSettings(){document.getElementById('settings-screen').classList.add('show')}
+function closeSettings(){document.getElementById('settings-screen').classList.remove('show')}
+
+// ============================================================
+// SPRITE SYSTEM (Canvas pixel art)
+// ============================================================
+var SPRITES={};
+function makeSprite(w,h,drawFn){
+  var c=document.createElement('canvas');c.width=w;c.height=h;
+  var x=c.getContext('2d');drawFn(x,w,h);return c;
+}
+function initSprites(){
+  // Player (chef) - 16x16
+  SPRITES.chef=makeSprite(16,16,function(c){
+    c.fillStyle='#fff';c.fillRect(5,0,6,3); // hat
+    c.fillStyle='#ffd5a0';c.fillRect(5,3,6,5); // face
+    c.fillStyle='#222';c.fillRect(6,4,2,1);c.fillRect(9,4,2,1); // eyes
+    c.fillStyle='#fff';c.fillRect(4,8,8,5); // body
+    c.fillStyle='#444';c.fillRect(5,13,2,3);c.fillRect(9,13,2,3); // legs
+  });
+  SPRITES.chef_blue=makeSprite(16,16,function(c){
+    c.fillStyle='#4d7cff';c.fillRect(5,0,6,3);
+    c.fillStyle='#ffd5a0';c.fillRect(5,3,6,5);
+    c.fillStyle='#222';c.fillRect(6,4,2,1);c.fillRect(9,4,2,1);
+    c.fillStyle='#4d7cff';c.fillRect(4,8,8,5);
+    c.fillStyle='#333';c.fillRect(5,13,2,3);c.fillRect(9,13,2,3);
+  });
+  SPRITES.chef_pink=makeSprite(16,16,function(c){
+    c.fillStyle='#ff2d7b';c.fillRect(5,0,6,3);
+    c.fillStyle='#ffd5a0';c.fillRect(5,3,6,5);
+    c.fillStyle='#222';c.fillRect(6,4,2,1);c.fillRect(9,4,2,1);
+    c.fillStyle='#ff2d7b';c.fillRect(4,8,8,5);
+    c.fillStyle='#333';c.fillRect(5,13,2,3);c.fillRect(9,13,2,3);
+  });
+  SPRITES.chef_gold=makeSprite(16,16,function(c){
+    c.fillStyle='#ffc942';c.fillRect(5,0,6,3);
+    c.fillStyle='#ffd5a0';c.fillRect(5,3,6,5);
+    c.fillStyle='#222';c.fillRect(6,4,2,1);c.fillRect(9,4,2,1);
+    c.fillStyle='#ffc942';c.fillRect(4,8,8,5);
+    c.fillStyle='#333';c.fillRect(5,13,2,3);c.fillRect(9,13,2,3);
+  });
+  SPRITES.chef_alien=makeSprite(16,16,function(c){
+    c.fillStyle='#39ff6e';c.fillRect(4,0,8,4); // alien head
+    c.fillStyle='#111';c.fillRect(5,1,3,2);c.fillRect(9,1,3,2); // big eyes
+    c.fillStyle='#39ff6e';c.fillRect(5,4,6,4);
+    c.fillStyle='#226633';c.fillRect(4,8,8,5);
+    c.fillStyle='#39ff6e';c.fillRect(5,13,2,3);c.fillRect(9,13,2,3);
+  });
+
+  // Customers - different alien species
+  SPRITES.cust1=makeSprite(16,16,function(c){
+    c.fillStyle='#8b5cf6';c.fillRect(4,1,8,6); // purple alien
+    c.fillStyle='#fff';c.fillRect(5,3,2,2);c.fillRect(9,3,2,2);
+    c.fillStyle='#111';c.fillRect(6,3,1,1);c.fillRect(10,3,1,1);
+    c.fillStyle='#6d3fc4';c.fillRect(4,7,8,5);
+    c.fillStyle='#8b5cf6';c.fillRect(5,12,2,4);c.fillRect(9,12,2,4);
+  });
+  SPRITES.cust2=makeSprite(16,16,function(c){
+    c.fillStyle='#f59e0b';c.fillRect(3,0,10,7); // orange blob
+    c.fillStyle='#111';c.fillRect(5,3,2,2);c.fillRect(9,3,2,2);
+    c.fillStyle='#d97706';c.fillRect(4,7,8,5);
+    c.fillStyle='#f59e0b';c.fillRect(5,12,2,4);c.fillRect(9,12,2,4);
+  });
+  SPRITES.cust3=makeSprite(16,16,function(c){
+    c.fillStyle='#06b6d4';c.fillRect(5,0,6,3);c.fillRect(3,3,10,4); // tentacle head
+    c.fillStyle='#fff';c.fillRect(5,4,2,1);c.fillRect(9,4,2,1);
+    c.fillStyle='#0891b2';c.fillRect(4,7,8,5);
+    c.fillStyle='#06b6d4';c.fillRect(4,12,2,4);c.fillRect(10,12,2,4);
+  });
+
+  // Stove (cooking station) - 16x16
+  SPRITES.stove=makeSprite(16,16,function(c){
+    c.fillStyle='#555';c.fillRect(1,4,14,12);
+    c.fillStyle='#333';c.fillRect(2,5,12,4);
+    c.fillStyle='#ff4422';c.fillRect(3,6,3,2);c.fillRect(10,6,3,2); // burners
+    c.fillStyle='#666';c.fillRect(2,10,12,5);
+    c.fillStyle='#444';c.fillRect(5,11,6,3); // oven door
+  });
+
+  // Counter - 16x16
+  SPRITES.counter=makeSprite(16,16,function(c){
+    c.fillStyle='#8b6914';c.fillRect(0,6,16,10);
+    c.fillStyle='#a37a1a';c.fillRect(0,6,16,3);
+    c.fillStyle='#7a5c12';c.fillRect(1,10,14,1);
+  });
+
+  // Table - 16x16
+  SPRITES.table=makeSprite(16,16,function(c){
+    c.fillStyle='#6b4c2a';c.fillRect(1,6,14,4);
+    c.fillStyle='#5a3d1f';c.fillRect(2,10,3,6);c.fillRect(11,10,3,6);
+    c.fillStyle='#7d5a33';c.fillRect(1,6,14,2);
+  });
+
+  // Food items
+  SPRITES.burger=makeSprite(10,10,function(c){
+    c.fillStyle='#d4a030';c.fillRect(1,1,8,2); // top bun
+    c.fillStyle='#39ff6e';c.fillRect(1,3,8,1); // lettuce
+    c.fillStyle='#8b4513';c.fillRect(1,4,8,2); // patty
+    c.fillStyle='#d4a030';c.fillRect(1,6,8,2); // bottom bun
+  });
+  SPRITES.pizza=makeSprite(10,10,function(c){
+    c.fillStyle='#d4a030';c.fillRect(0,3,10,6); // crust
+    c.fillStyle='#ff3333';c.fillRect(1,4,8,4); // sauce
+    c.fillStyle='#ffd700';c.fillRect(2,5,2,2);c.fillRect(6,5,2,2); // cheese
+  });
+  SPRITES.sushi=makeSprite(10,10,function(c){
+    c.fillStyle='#222';c.fillRect(1,3,8,5); // nori
+    c.fillStyle='#fff';c.fillRect(2,4,6,3); // rice
+    c.fillStyle='#ff6633';c.fillRect(3,4,4,2); // salmon
+  });
+  SPRITES.steak=makeSprite(10,10,function(c){
+    c.fillStyle='#8b2500';c.fillRect(1,2,8,6);
+    c.fillStyle='#a03000';c.fillRect(2,3,6,4);
+    c.fillStyle='#cc4400';c.fillRect(3,4,4,2);
+  });
+
+  // Spacebar skins
+  SPRITES.spacebar_default=makeSprite(48,12,function(c){
+    c.fillStyle='#555';c.fillRect(0,0,48,12);c.fillStyle='#666';c.fillRect(1,1,46,10);
+    c.fillStyle='#888';c.fillRect(4,3,40,6);
+  });
+  SPRITES.spacebar_neon=makeSprite(48,12,function(c){
+    c.fillStyle='#003333';c.fillRect(0,0,48,12);c.fillStyle='#00ffe5';c.fillRect(1,1,46,1);c.fillRect(1,10,46,1);c.fillRect(1,1,1,10);c.fillRect(46,1,1,10);
+    c.fillStyle='#005555';c.fillRect(2,2,44,8);
+  });
+  SPRITES.spacebar_fire=makeSprite(48,12,function(c){
+    c.fillStyle='#330000';c.fillRect(0,0,48,12);c.fillStyle='#ff2d2d';c.fillRect(1,1,46,1);c.fillRect(1,10,46,1);
+    c.fillStyle='#441111';c.fillRect(2,2,44,8);c.fillStyle='#ff6600';c.fillRect(4,4,4,4);c.fillRect(20,3,6,5);c.fillRect(38,4,6,4);
+  });
+  SPRITES.spacebar_gold=makeSprite(48,12,function(c){
+    c.fillStyle='#3a2a00';c.fillRect(0,0,48,12);c.fillStyle='#ffc942';c.fillRect(1,1,46,1);c.fillRect(1,10,46,1);c.fillRect(1,1,1,10);c.fillRect(46,1,1,10);
+    c.fillStyle='#554400';c.fillRect(2,2,44,8);
+  });
+
+  // Walls / Floor tiles
+  SPRITES.floor=makeSprite(16,16,function(c){
+    c.fillStyle='#1a1a2e';c.fillRect(0,0,16,16);
+    c.fillStyle='#1e1e35';c.fillRect(0,0,8,8);c.fillRect(8,8,8,8);
+  });
+  SPRITES.wall=makeSprite(16,16,function(c){
+    c.fillStyle='#252545';c.fillRect(0,0,16,16);
+    c.fillStyle='#2a2a50';c.fillRect(0,0,16,2);
+    c.fillStyle='#202040';c.fillRect(0,14,16,2);
+  });
+
+  // Door
+  SPRITES.door=makeSprite(16,16,function(c){
+    c.fillStyle='#4d3a1a';c.fillRect(2,0,12,16);
+    c.fillStyle='#604a25';c.fillRect(3,1,10,14);
+    c.fillStyle='#ffc942';c.fillRect(10,7,2,2); // knob
+  });
+
+  // Star decor
+  SPRITES.starDecor=makeSprite(8,8,function(c){
+    c.fillStyle='#ffc942';c.fillRect(3,0,2,8);c.fillRect(0,3,8,2);
+    c.fillRect(1,1,2,2);c.fillRect(5,1,2,2);c.fillRect(1,5,2,2);c.fillRect(5,5,2,2);
+  });
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+var G={
+  running:false, mode:'single', scale:3, tileSize:16,
+  mapW:20, mapH:15,
+  money:50, rep:0, day:1,
+  player:{x:10,y:10,dir:0,skin:'chef',moving:false,frame:0},
+  customers:[], maxCustomers:3, spawnTimer:0, spawnRate:300,
+  stations:[], tables:[], counters:[], doorPos:{x:0,y:12},
+  cooking:null, cookProgress:0, cookTarget:10, cookItem:'',
+  orders:[], completedOrders:0,
+  upgrades:{speed:0, quality:0, tables:0, menu:0},
+  owned:{skins:['chef'],spacebars:['spacebar_default'],powerups:[],decor:[]},
+  equipped:{skin:'chef',spacebar:'spacebar_default'},
+  map:[]
+};
+
+var MENU_ITEMS=[
+  {id:'burger',name:'Burger',price:15,presses:10,unlock:0},
+  {id:'pizza',name:'Pizza',price:25,presses:15,unlock:0},
+  {id:'sushi',name:'Sushi',price:40,presses:20,unlock:50},
+  {id:'steak',name:'Steak',price:60,presses:25,unlock:100}
+];
+
+var SHOP_POWERUPS=[
+  {id:'speed_boost',name:'Speed Boots',desc:'Move 30% faster',cost:80,icon:'👢'},
+  {id:'double_tips',name:'Double Tips',desc:'2x tips for 1 day',cost:120,icon:'💰'},
+  {id:'auto_cook',name:'Auto Stir',desc:'Auto 2 presses/sec',cost:200,icon:'🤖'},
+  {id:'magnet',name:'Customer Magnet',desc:'+2 max customers',cost:150,icon:'🧲'}
+];
+var SHOP_DECOR=[
+  {id:'plant',name:'Space Plant',desc:'Boosts rep gain',cost:60,icon:'🌿'},
+  {id:'jukebox',name:'Jukebox',desc:'Customers wait longer',cost:100,icon:'🎵'},
+  {id:'neon_sign',name:'Neon Sign',desc:'Attract more customers',cost:150,icon:'✨'},
+  {id:'aquarium',name:'Aquarium',desc:'+5 rep per day',cost:250,icon:'🐠'}
+];
+
+var UPGRADES=[
+  {id:'speed',name:'Speed',desc:'Cook faster',cost:function(){return 50+G.upgrades.speed*40},max:5},
+  {id:'quality',name:'Quality',desc:'Higher tips',cost:function(){return 60+G.upgrades.quality*50},max:5},
+  {id:'tables',name:'Tables',desc:'More seating',cost:function(){return 80+G.upgrades.tables*60},max:4},
+  {id:'menu',name:'Menu',desc:'Unlock dishes',cost:function(){return 100+G.upgrades.menu*80},max:3}
+];
+
+var PLAYER_SKINS=[
+  {id:'chef',name:'Classic Chef',cost:0,desc:'The OG'},
+  {id:'chef_blue',name:'Blue Chef',cost:50,desc:'Cool & collected'},
+  {id:'chef_pink',name:'Pink Chef',cost:50,desc:'Bold & bright'},
+  {id:'chef_gold',name:'Gold Chef',cost:150,desc:'Premium drip'},
+  {id:'chef_alien',name:'Alien Chef',cost:200,desc:'Out of this world'}
+];
+var SPACEBAR_SKINS=[
+  {id:'spacebar_default',name:'Standard',cost:0,desc:'Basic bar'},
+  {id:'spacebar_neon',name:'Neon',cost:75,desc:'Cyber glow'},
+  {id:'spacebar_fire',name:'Fire',cost:100,desc:'Hot hot hot'},
+  {id:'spacebar_gold',name:'Gold',cost:200,desc:'Luxury press'}
+];
+
+// ============================================================
+// MAP GENERATION
+// ============================================================
+function buildMap(){
+  G.map=[];G.stations=[];G.tables=[];G.counters=[];
+  for(var y=0;y<G.mapH;y++){
+    G.map[y]=[];
+    for(var x=0;x<G.mapW;x++){
+      if(y===0||y===G.mapH-1||x===0||x===G.mapW-1) G.map[y][x]='wall';
+      else G.map[y][x]='floor';
+    }
+  }
+  // Door
+  G.map[G.mapH-1][G.doorPos.x=Math.floor(G.mapW/2)]='door';
+
+  // Stoves (top wall)
+  for(var i=3;i<7;i++){G.map[1][i]='stove';G.stations.push({x:i,y:1,type:'stove'});}
+
+  // Counters (serving area)
+  for(var i=9;i<14;i++){G.map[1][i]='counter';G.counters.push({x:i,y:1});}
+
+  // Tables
+  var tablePositions=[[4,6],[8,6],[12,6],[4,10],[8,10],[12,10]];
+  var numTables=2+G.upgrades.tables;
+  for(var i=0;i<Math.min(numTables,tablePositions.length);i++){
+    var tp=tablePositions[i];
+    G.map[tp[1]][tp[0]]='table';
+    G.tables.push({x:tp[0],y:tp[1],occupied:false,customer:null,order:null,served:false});
+  }
+
+  G.player.x=Math.floor(G.mapW/2);G.player.y=Math.floor(G.mapH/2);
+}
+
+// ============================================================
+// CANVAS RENDERING
+// ============================================================
+var canvas,ctx;
+function initCanvas(){
+  canvas=document.getElementById('game');
+  ctx=canvas.getContext('2d');
+  resize();
+  window.addEventListener('resize',resize);
+}
+function resize(){
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+  G.scale=Math.max(2,Math.floor(Math.min(canvas.width/(G.mapW*G.tileSize),canvas.height/(G.mapH*G.tileSize))));
+}
+function draw(){
+  ctx.fillStyle='#0b0b1a';ctx.fillRect(0,0,canvas.width,canvas.height);
+  var ts=G.tileSize*G.scale;
+  var offX=Math.floor((canvas.width-G.mapW*ts)/2);
+  var offY=Math.floor((canvas.height-G.mapH*ts)/2);
+
+  // Draw map
+  for(var y=0;y<G.mapH;y++){
+    for(var x=0;x<G.mapW;x++){
+      var tile=G.map[y][x];
+      var sprite=SPRITES[tile]||SPRITES.floor;
+      ctx.drawImage(sprite,offX+x*ts,offY+y*ts,ts,ts);
+    }
+  }
+
+  // Draw customers
+  G.customers.forEach(function(c){
+    if(c.seated&&c.table){
+      var sp=SPRITES['cust'+((c.type%3)+1)];
+      ctx.drawImage(sp,offX+c.table.x*ts,offY+(c.table.y-1)*ts,ts,ts);
+      // Draw order bubble
+      if(c.order&&!c.served){
+        ctx.fillStyle='rgba(255,255,255,.9)';
+        var bx=offX+c.table.x*ts+ts/2-12*G.scale/2;
+        var by=offY+(c.table.y-2)*ts+ts/2;
+        ctx.fillRect(bx,by,12*G.scale,12*G.scale);
+        ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.strokeRect(bx,by,12*G.scale,12*G.scale);
+        if(SPRITES[c.order]) ctx.drawImage(SPRITES[c.order],bx+1*G.scale,by+1*G.scale,10*G.scale,10*G.scale);
+      }
+      // Patience bar
+      if(!c.served){
+        var pw=ts*.8,ph=3*G.scale;
+        var px=offX+c.table.x*ts+(ts-pw)/2;
+        var py=offY+(c.table.y-1)*ts-ph-2*G.scale;
+        ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(px,py,pw,ph);
+        var ratio=c.patience/c.maxPatience;
+        ctx.fillStyle=ratio>.5?'#39ff6e':ratio>.25?'#ffc942':'#ff3d3d';
+        ctx.fillRect(px,py,pw*ratio,ph);
+      }
+    }
+  });
+
+  // Draw player
+  var pSprite=SPRITES[G.equipped.skin]||SPRITES.chef;
+  var px=offX+G.player.x*ts;
+  var py=offY+G.player.y*ts;
+  // Bob animation
+  if(G.player.moving) py+=Math.sin(Date.now()/100)*2*G.scale;
+  ctx.drawImage(pSprite,px,py,ts,ts);
+
+  // Carrying food indicator
+  if(G.cooking&&G.cooking.done){
+    var fi=SPRITES[G.cooking.item];
+    if(fi) ctx.drawImage(fi,px+ts/2-5*G.scale,py-6*G.scale,10*G.scale,10*G.scale);
+  }
+}
+
+// ============================================================
+// INPUT
+// ============================================================
+var keys={};
+document.addEventListener('keydown',function(e){
+  keys[e.code]=true;
+  if(e.code==='Space'){e.preventDefault();handleInteract();}
+  if(e.code==='Escape'){
+    if(document.querySelector('.modal-overlay.show')) closeAllModals();
+    else if(G.running) openMenuModal();
+  }
+});
+document.addEventListener('keyup',function(e){keys[e.code]=false;});
+
+// Touch support
+document.addEventListener('touchstart',function(e){
+  if(!G.running)return;
+  initAudio();
+  handleInteract();
+},{passive:true});
+document.addEventListener('click',function(){initAudio();},{once:true});
+
+function handleInteract(){
+  if(!G.running)return;
+  initAudio();
+  // If cooking, add press
+  if(G.cooking&&!G.cooking.done){
+    G.cookProgress++;
+    sfxCook();
+    updateCookBar();
+    if(G.cookProgress>=G.cookTarget){
+      G.cooking.done=true;
+      hideCookBar();
+      sfxDone();
+      toast('Food ready! Serve it!','info');
+    }
+    return;
+  }
+  // Check what's nearby
+  var px=G.player.x,py=G.player.y;
+  var dirs=[[0,-1],[0,1],[-1,0],[1,0]];
+  for(var d=0;d<dirs.length;d++){
+    var nx=px+dirs[d][0],ny=py+dirs[d][1];
+    if(ny<0||ny>=G.mapH||nx<0||nx>=G.mapW) continue;
+    var tile=G.map[ny][nx];
+
+    // Stove - start cooking
+    if(tile==='stove'&&!G.cooking){
+      var available=getAvailableOrders();
+      if(available.length>0){
+        var order=available[0];
+        var item=MENU_ITEMS.find(function(m){return m.id===order});
+        if(item){
+          G.cooking={item:order,done:false};
+          G.cookProgress=0;
+          G.cookTarget=item.presses-G.upgrades.speed*2;
+          if(G.cookTarget<3)G.cookTarget=3;
+          showCookBar(item.name);
+        }
+      } else {
+        toast('No orders to cook!','bad');
+        sfxBad();
+      }
+      return;
+    }
+
+    // Table - serve food
+    if(tile==='table'&&G.cooking&&G.cooking.done){
+      var tbl=G.tables.find(function(t){return t.x===nx&&t.y===ny&&t.occupied&&!t.served});
+      if(tbl&&tbl.customer&&tbl.customer.order===G.cooking.item){
+        tbl.served=true;tbl.customer.served=true;
+        var item=MENU_ITEMS.find(function(m){return m.id===G.cooking.item});
+        var tip=Math.floor(item.price*(1+G.upgrades.quality*.2)*(G.owned.powerups.indexOf('double_tips')!==-1?2:1));
+        G.money+=tip;G.rep+=2;
+        G.completedOrders++;
+        sfxMoney();
+        toast('+$'+tip,'money');
+        G.cooking=null;
+        // Customer leaves after eating
+        setTimeout(function(){
+          tbl.occupied=false;tbl.served=false;
+          G.customers=G.customers.filter(function(c){return c!==tbl.customer});
+          tbl.customer=null;
+        },2000);
+        return;
+      } else if(tbl&&tbl.customer&&tbl.customer.order!==G.cooking.item){
+        toast('Wrong dish!','bad');sfxBad();
+      }
+      return;
+    }
+  }
+}
+
+function getAvailableOrders(){
+  var orders=[];
+  G.customers.forEach(function(c){
+    if(c.seated&&c.order&&!c.served){
+      var alreadyCooking=G.cooking&&G.cooking.item===c.order;
+      orders.push(c.order);
+    }
+  });
+  return orders;
+}
+
+// ============================================================
+// COOK BAR UI
+// ============================================================
+function showCookBar(name){
+  document.getElementById('cook-bar').style.display='block';
+  document.getElementById('cook-name').textContent=name;
+  updateCookBar();
+}
+function hideCookBar(){document.getElementById('cook-bar').style.display='none';}
+function updateCookBar(){
+  var pct=Math.min(100,(G.cookProgress/G.cookTarget)*100);
+  document.getElementById('cook-fill').style.width=pct+'%';
+  document.getElementById('cook-text').textContent=G.cookProgress+' / '+G.cookTarget;
+}
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+var lastTime=0, moveTimer=0;
+function gameLoop(time){
+  if(!G.running){requestAnimationFrame(gameLoop);return;}
+  var dt=time-lastTime;lastTime=time;
+  if(dt>100)dt=100;
+
+  // Movement
+  moveTimer+=dt;
+  var moveSpeed=G.owned.powerups.indexOf('speed_boost')!==-1?100:140;
+  if(moveTimer>moveSpeed){
+    moveTimer=0;
+    var dx=0,dy=0;
+    if(CTRL==='wasd'){
+      if(keys['KeyW']||keys['ArrowUp'])dy=-1;
+      if(keys['KeyS']||keys['ArrowDown'])dy=1;
+      if(keys['KeyA']||keys['ArrowLeft'])dx=-1;
+      if(keys['KeyD']||keys['ArrowRight'])dx=1;
+    } else {
+      if(keys['ArrowUp'])dy=-1;
+      if(keys['ArrowDown'])dy=1;
+      if(keys['ArrowLeft'])dx=-1;
+      if(keys['ArrowRight'])dx=1;
+    }
+    if(dx!==0||dy!==0){
+      var nx=G.player.x+dx,ny=G.player.y+dy;
+      if(nx>=0&&nx<G.mapW&&ny>=0&&ny<G.mapH){
+        var tile=G.map[ny][nx];
+        if(tile==='floor'||tile==='door'){
+          G.player.x=nx;G.player.y=ny;G.player.moving=true;
+          sfxStep();
+        }
+      }
+    } else G.player.moving=false;
+  }
+
+  // Auto cook powerup
+  if(G.cooking&&!G.cooking.done&&G.owned.powerups.indexOf('auto_cook')!==-1){
+    G.cookProgress+=dt/500;
+    updateCookBar();
+    if(G.cookProgress>=G.cookTarget){G.cooking.done=true;hideCookBar();sfxDone();toast('Food ready!','info');}
+  }
+
+  // Customer spawning
+  G.spawnTimer+=dt;
+  var maxC=G.maxCustomers+(G.owned.powerups.indexOf('magnet')!==-1?2:0);
+  if(G.spawnTimer>G.spawnRate*16&&G.customers.length<maxC){
+    G.spawnTimer=0;
+    spawnCustomer();
+  }
+
+  // Customer patience
+  G.customers.forEach(function(c){
+    if(c.seated&&!c.served){
+      var patienceMod=G.owned.decor.indexOf('jukebox')!==-1?.7:1;
+      c.patience-=dt/1000*patienceMod;
+      if(c.patience<=0){
+        // Customer leaves angry
+        toast('-3 rep','bad');sfxBad();
+        G.rep=Math.max(0,G.rep-3);
+        var tbl=c.table;
+        if(tbl){tbl.occupied=false;tbl.customer=null;tbl.served=false;}
+        G.customers=G.customers.filter(function(cc){return cc!==c});
+      }
+    }
+  });
+
+  // Day cycle (every 2 min)
+  // (simplified - no real day counter for now)
+
+  // Update HUD
+  document.getElementById('hud-money').textContent=G.money;
+  document.getElementById('hud-rep').textContent=G.rep;
+  document.getElementById('hud-day').textContent=G.day;
+
+  // Rep from decor
+  // (passive bonuses applied on purchase)
+
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+function spawnCustomer(){
+  var emptyTables=G.tables.filter(function(t){return !t.occupied});
+  if(emptyTables.length===0)return;
+  var table=emptyTables[Math.floor(Math.random()*emptyTables.length)];
+  var unlockedMenu=MENU_ITEMS.filter(function(m){return G.rep>=m.unlock});
+  var order=unlockedMenu[Math.floor(Math.random()*unlockedMenu.length)];
+  var cust={
+    type:Math.floor(Math.random()*3)+1,
+    seated:true, table:table, order:order.id, served:false,
+    patience:30+G.upgrades.quality*5, maxPatience:30+G.upgrades.quality*5
+  };
+  table.occupied=true;table.customer=cust;table.served=false;
+  G.customers.push(cust);
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function toast(msg,type){
+  var t=document.createElement('div');
+  t.className='toast toast-'+type;t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(function(){t.remove()},2500);
+}
+function closeModal(id){document.getElementById(id).classList.remove('show')}
+function openModal(id){document.getElementById(id).classList.add('show')}
+function closeAllModals(){document.querySelectorAll('.modal-overlay').forEach(function(m){m.classList.remove('show')})}
+
+// ============================================================
+// SHOP / SKINS / UPGRADES
+// ============================================================
+function openShopModal(){sfxClick();openModal('modal-shop');shopTab('powerups');}
+function openSkinsModal(){sfxClick();openModal('modal-skins');skinTab('player');}
+function openUpgradeModal(){sfxClick();openModal('modal-upgrade');renderUpgrades();}
+function openMenuModal(){sfxClick();openModal('modal-menu');}
+
+function shopTab(tab,btn){
+  if(btn){btn.parentElement.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});btn.classList.add('active');}
+  var items=tab==='powerups'?SHOP_POWERUPS:SHOP_DECOR;
+  var el=document.getElementById('shop-content');
+  el.innerHTML=items.map(function(it){
+    var owned=G.owned.powerups.indexOf(it.id)!==-1||G.owned.decor.indexOf(it.id)!==-1;
+    return '<div class="shop-item'+(owned?' owned':'')+'" onclick="buyShop(\''+it.id+'\',\''+tab+'\')"><div class="si-icon">'+it.icon+'</div><div class="si-info"><div class="si-name">'+it.name+'</div><div class="si-desc">'+it.desc+'</div></div><div class="si-cost">'+(owned?'OWNED':'$'+it.cost)+'</div></div>';
+  }).join('');
+}
+function buyShop(id,tab){
+  var items=tab==='powerups'?SHOP_POWERUPS:SHOP_DECOR;
+  var list=tab==='powerups'?G.owned.powerups:G.owned.decor;
+  if(list.indexOf(id)!==-1)return;
+  var item=items.find(function(i){return i.id===id});
+  if(!item)return;
+  if(G.money<item.cost){toast('Not enough money!','bad');sfxBad();return;}
+  G.money-=item.cost;list.push(id);sfxMoney();toast('Bought '+item.name+'!','money');
+  shopTab(tab);
+  // Apply passive effects
+  if(id==='aquarium')G.rep+=5;
+}
+
+function skinTab(tab,btn){
+  if(btn){btn.parentElement.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});btn.classList.add('active');}
+  var items=tab==='player'?PLAYER_SKINS:SPACEBAR_SKINS;
+  var ownedList=tab==='player'?G.owned.skins:G.owned.spacebars;
+  var equippedId=tab==='player'?G.equipped.skin:G.equipped.spacebar;
+  var el=document.getElementById('skins-content');
+  el.innerHTML=items.map(function(s){
+    var owned=ownedList.indexOf(s.id)!==-1;
+    var eq=equippedId===s.id;
+    return '<div class="shop-item'+(eq?' owned':'')+'" onclick="equipSkin(\''+s.id+'\',\''+tab+'\')"><div class="si-icon" style="background:rgba(255,255,255,.03)"><canvas width="32" height="32" id="skin-'+s.id+'" style="image-rendering:pixelated;width:32px;height:32px"></canvas></div><div class="si-info"><div class="si-name">'+s.name+'</div><div class="si-desc">'+s.desc+'</div></div><div class="si-cost">'+(eq?'EQUIPPED':owned?'EQUIP':'$'+s.cost)+'</div></div>';
+  }).join('');
+  // Draw skin previews
+  items.forEach(function(s){
+    var c=document.getElementById('skin-'+s.id);
+    if(c&&SPRITES[s.id]){var x=c.getContext('2d');x.drawImage(SPRITES[s.id],0,0,32,32);}
+  });
+}
+function equipSkin(id,tab){
+  var items=tab==='player'?PLAYER_SKINS:SPACEBAR_SKINS;
+  var ownedList=tab==='player'?G.owned.skins:G.owned.spacebars;
+  var item=items.find(function(s){return s.id===id});
+  if(!item)return;
+  if(ownedList.indexOf(id)===-1){
+    if(G.money<item.cost){toast('Not enough money!','bad');sfxBad();return;}
+    G.money-=item.cost;ownedList.push(id);sfxMoney();toast('Bought '+item.name+'!','money');
+  }
+  if(tab==='player')G.equipped.skin=id; else G.equipped.spacebar=id;
+  sfxClick();skinTab(tab);
+}
+
+function renderUpgrades(){
+  var el=document.getElementById('upgrade-content');
+  el.innerHTML=UPGRADES.map(function(u){
+    var lv=G.upgrades[u.id];var maxed=lv>=u.max;var cost=maxed?0:u.cost();
+    return '<div class="shop-item'+(maxed?' owned':'')+'" onclick="buyUpgrade(\''+u.id+'\')"><div class="si-icon" style="font-size:1rem;background:rgba(0,255,229,.05)">'+(lv+'/'+u.max)+'</div><div class="si-info"><div class="si-name">'+u.name+'</div><div class="si-desc">'+u.desc+'</div></div><div class="si-cost">'+(maxed?'MAX':'$'+cost)+'</div></div>';
+  }).join('');
+}
+function buyUpgrade(id){
+  var u=UPGRADES.find(function(u){return u.id===id});if(!u)return;
+  if(G.upgrades[id]>=u.max)return;
+  var cost=u.cost();
+  if(G.money<cost){toast('Not enough money!','bad');sfxBad();return;}
+  G.money-=cost;G.upgrades[id]++;sfxMoney();toast(u.name+' upgraded!','money');
+  if(id==='tables')buildMap(); // rebuild map for new tables
+  renderUpgrades();
+}
+
+// ============================================================
+// FIREBASE
+// ============================================================
+var db=null, FB_CONFIG=null;
+function loadFBConfig(){
+  try{var c=localStorage.getItem('sbt_firebase');if(c)FB_CONFIG=JSON.parse(c);}catch(e){}
+}
+function saveFirebaseConfig(){
+  var cfg={
+    apiKey:document.getElementById('fb-apiKey').value.trim(),
+    authDomain:document.getElementById('fb-authDomain').value.trim(),
+    databaseURL:document.getElementById('fb-databaseURL').value.trim(),
+    projectId:document.getElementById('fb-projectId').value.trim()
+  };
+  if(!cfg.apiKey||!cfg.databaseURL){document.getElementById('fb-err').innerHTML='<div class="err">API Key and Database URL required</div>';return;}
+  try{
+    firebase.initializeApp(cfg);db=firebase.database();
+    FB_CONFIG=cfg;localStorage.setItem('sbt_firebase',JSON.stringify(cfg));
+    toast('Firebase connected!','info');closeModal('modal-firebase');
+  }catch(e){document.getElementById('fb-err').innerHTML='<div class="err">'+e.message+'</div>';}
+}
+function initFirebase(){
+  loadFBConfig();
+  if(FB_CONFIG){
+    try{
+      if(!firebase.apps.length) firebase.initializeApp(FB_CONFIG);
+      db=firebase.database();
+    }catch(e){db=null;}
+  }
+}
+
+// ============================================================
+// MULTIPLAYER (Firebase)
+// ============================================================
+var MP={user:null,serverRef:null};
+
+function openMultiplayer(){
+  sfxClick();
+  if(!db){openModal('modal-firebase');return;}
+  openModal('modal-mp');mpTab('servers');
+}
+function mpTab(tab,btn){
+  if(btn){btn.parentElement.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});btn.classList.add('active');}
+  var el=document.getElementById('mp-content');
+  if(tab==='servers') loadServers(el);
+  else if(tab==='host') showHostUI(el);
+  else if(tab==='friends') loadFriendsUI(el);
+}
+
+function mpLogin(){
+  var u=document.getElementById('mp-user').value.trim(),p=document.getElementById('mp-pass').value;
+  if(!u||!p){document.getElementById('mp-err').innerHTML='<div class="err">Enter username & password</div>';return;}
+  db.ref('accounts/'+u).once('value',function(snap){
+    var d=snap.val();
+    if(!d){document.getElementById('mp-err').innerHTML='<div class="err">Account not found</div>';return;}
+    if(d.pass!==p){document.getElementById('mp-err').innerHTML='<div class="err">Wrong password</div>';return;}
+    MP.user=u;document.getElementById('mp-loggedout').style.display='none';document.getElementById('mp-loggedin').style.display='block';document.getElementById('mp-name').textContent=u;
+    document.getElementById('mp-err').innerHTML='';
+  });
+}
+function mpRegister(){
+  var u=document.getElementById('mp-user').value.trim(),p=document.getElementById('mp-pass').value;
+  if(!u||!p||u.length<2||p.length<4){document.getElementById('mp-err').innerHTML='<div class="err">Username 2+ chars, password 4+ chars</div>';return;}
+  db.ref('accounts/'+u).once('value',function(snap){
+    if(snap.val()){document.getElementById('mp-err').innerHTML='<div class="err">Username taken</div>';return;}
+    db.ref('accounts/'+u).set({pass:p,coins:0,created:Date.now()});
+    MP.user=u;document.getElementById('mp-loggedout').style.display='none';document.getElementById('mp-loggedin').style.display='block';document.getElementById('mp-name').textContent=u;
+    document.getElementById('mp-err').innerHTML='';
+    toast('Account created!','info');
+  });
+}
+function mpLogout(){MP.user=null;document.getElementById('mp-loggedout').style.display='block';document.getElementById('mp-loggedin').style.display='none';}
+
+function loadServers(el){
+  if(!db){el.innerHTML='<p style="color:var(--mut);text-align:center;padding:20px">Firebase not connected</p>';return;}
+  el.innerHTML='<p style="color:var(--mut);text-align:center;padding:20px">Loading servers...</p>';
+  db.ref('servers').orderByChild('status').equalTo('open').once('value',function(snap){
+    var servers=snap.val();
+    if(!servers){el.innerHTML='<p style="color:var(--mut);text-align:center;padding:20px">No servers found. Host one!</p>';return;}
+    var html='';
+    for(var k in servers){
+      var s=servers[k];
+      if(s.visibility==='friends'&&MP.user&&s.host!==MP.user) continue; // skip friends-only if not friend (simplified)
+      html+='<div class="server-row" onclick="joinServer(\''+k+'\')"><div class="server-name">'+s.name+'<span class="server-tag">'+(s.visibility==='public'?'Public':'Friends')+'</span></div><div class="server-players">'+((s.playerCount||1)+'/'+s.maxPlayers)+' players</div><button class="server-join">Join</button></div>';
+    }
+    el.innerHTML=html||'<p style="color:var(--mut);text-align:center;padding:20px">No public servers</p>';
+  });
+}
+
+function showHostUI(el){
+  el.innerHTML='<label class="lbl">Server Name</label><input class="inp" id="host-name" placeholder="My Restaurant" style="margin-bottom:8px"><label class="lbl">Visibility</label><div style="display:flex;gap:6px;margin-bottom:8px"><button class="ctrl-choice active" onclick="this.parentElement.querySelectorAll(\'.ctrl-choice\').forEach(function(b){b.classList.remove(\'active\')});this.classList.add(\'active\');this.dataset.v=\'public\'" data-v="public">Public</button><button class="ctrl-choice" onclick="this.parentElement.querySelectorAll(\'.ctrl-choice\').forEach(function(b){b.classList.remove(\'active\')});this.classList.add(\'active\');this.dataset.v=\'friends\'" data-v="friends">Friends Only</button></div><button class="mbtn mbtn-neon" onclick="createServer()">Create Server</button>';
+}
+
+function createServer(){
+  if(!MP.user){toast('Login first!','bad');return;}
+  var name=document.getElementById('host-name').value.trim()||MP.user+"'s Restaurant";
+  var vis=document.querySelector('#mp-content .ctrl-choice.active');
+  var visibility=vis?vis.dataset.v:'public';
+  var ref=db.ref('servers').push();
+  ref.set({name:name,host:MP.user,visibility:visibility,status:'open',maxPlayers:4,playerCount:1,created:Date.now()});
+  toast('Server created!','info');
+  closeModal('modal-mp');
+  // Start multiplayer game
+  G.mode='multi';startGame();
+}
+
+function joinServer(key){
+  if(!MP.user){toast('Login first to join!','bad');return;}
+  db.ref('servers/'+key).once('value',function(snap){
+    var s=snap.val();if(!s||s.status!=='open'){toast('Server unavailable','bad');return;}
+    db.ref('servers/'+key+'/playerCount').set((s.playerCount||1)+1);
+    toast('Joined '+s.name+'!','info');
+    closeModal('modal-mp');
+    G.mode='multi';startGame();
+  });
+}
+
+// FRIENDS
+function loadFriendsUI(el){
+  if(!MP.user){el.innerHTML='<p style="color:var(--mut);text-align:center;padding:20px">Login to use friends</p>';return;}
+  el.innerHTML='<label class="lbl">Add Friend</label><div style="display:flex;gap:6px;margin-bottom:14px"><input class="inp" id="fr-add-in" placeholder="Username"><button class="mbtn mbtn-neon" onclick="sendFriendReq()" style="width:auto;margin:0;padding:8px 16px">Send</button></div><div id="fr-req-list"></div><div id="fr-friend-list"></div>';
+  // Load friend data
+  db.ref('friends/'+MP.user).once('value',function(snap){
+    var data=snap.val()||{};
+    var reqHtml='',frHtml='';
+    for(var k in data){
+      if(data[k]==='pending_in') reqHtml+='<div class="fr-row"><span>'+k+'</span><div class="fr-btns"><button class="fr-btn fr-accept" onclick="respondFR(\''+k+'\',true)">Accept</button><button class="fr-btn fr-decline" onclick="respondFR(\''+k+'\',false)">Decline</button></div></div>';
+      else if(data[k]==='accepted') frHtml+='<div class="fr-row"><span style="font-weight:700">'+k+'</span><button class="fr-btn fr-remove" onclick="removeFR(\''+k+'\')">Remove</button></div>';
+      else if(data[k]==='pending_out') frHtml+='<div class="fr-row"><span>'+k+'</span><span style="color:var(--mut);font-size:.75rem">Pending</span></div>';
+    }
+    document.getElementById('fr-req-list').innerHTML=reqHtml?'<div class="lbl" style="margin-top:8px">Requests</div>'+reqHtml:'';
+    document.getElementById('fr-friend-list').innerHTML=frHtml?'<div class="lbl" style="margin-top:8px">Friends</div>'+frHtml:'<p style="color:var(--mut);font-size:.8rem;text-align:center;padding:10px">No friends yet</p>';
+  });
+}
+function sendFriendReq(){
+  var to=document.getElementById('fr-add-in').value.trim();
+  if(!to||to===MP.user){toast('Invalid username','bad');return;}
+  db.ref('accounts/'+to).once('value',function(snap){
+    if(!snap.val()){toast('Player not found','bad');return;}
+    db.ref('friends/'+MP.user+'/'+to).set('pending_out');
+    db.ref('friends/'+to+'/'+MP.user).set('pending_in');
+    toast('Request sent!','info');document.getElementById('fr-add-in').value='';
+    loadFriendsUI(document.getElementById('mp-content'));
+  });
+}
+function respondFR(from,accept){
+  if(accept){db.ref('friends/'+MP.user+'/'+from).set('accepted');db.ref('friends/'+from+'/'+MP.user).set('accepted');}
+  else{db.ref('friends/'+MP.user+'/'+from).remove();db.ref('friends/'+from+'/'+MP.user).remove();}
+  loadFriendsUI(document.getElementById('mp-content'));
+}
+function removeFR(name){
+  db.ref('friends/'+MP.user+'/'+name).remove();
+  db.ref('friends/'+name+'/'+MP.user).remove();
+  loadFriendsUI(document.getElementById('mp-content'));
+}
+
+// ============================================================
+// GAME START / STOP
+// ============================================================
+function startGame(){
+  initAudio();
+  buildMap();
+  G.running=true;G.money=50;G.rep=0;G.day=1;G.customers=[];G.cooking=null;G.completedOrders=0;
+  document.getElementById('title-screen').style.display='none';
+  document.getElementById('hud').style.display='flex';
+  document.getElementById('bottom-bar').style.display='flex';
+  document.getElementById('ctrl-hint').style.display='block';
+  updateCtrlHint();
+  startMusic();
+}
+function startSinglePlayer(){G.mode='single';startGame();}
+function quitToTitle(){
+  G.running=false;stopMusic();
+  document.getElementById('title-screen').style.display='flex';
+  document.getElementById('hud').style.display='none';
+  document.getElementById('bottom-bar').style.display='none';
+  document.getElementById('ctrl-hint').style.display='none';
+  hideCookBar();closeAllModals();
+}
+
+// ============================================================
+// STARS BACKGROUND
+// ============================================================
+function createStars(){
+  var el=document.getElementById('stars');
+  for(var i=0;i<80;i++){
+    var s=document.createElement('div');s.className='star';
+    s.style.width=s.style.height=Math.random()*2+1+'px';
+    s.style.left=Math.random()*100+'%';s.style.top=Math.random()*100+'%';
+    s.style.animationDuration=Math.random()*3+2+'s';s.style.animationDelay=Math.random()*3+'s';
+    el.appendChild(s);
+  }
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init(){
+  createStars();
+  initSprites();
+  initCanvas();
+  initFirebase();
+  requestAnimationFrame(gameLoop);
+}
+window.addEventListener('load',init);
+</script>
+</body>
+</html>
